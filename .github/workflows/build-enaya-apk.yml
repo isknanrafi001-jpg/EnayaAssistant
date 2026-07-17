@@ -1,0 +1,68 @@
+name: Build Enaya APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'EnayaAssistant_MobileBuild.zip'
+      - '.github/workflows/build-enaya-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.7'
+
+      - name: Extract Enaya Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f EnayaAssistant_MobileBuild.zip
+          rm -rf extracted
+          mkdir -p extracted
+          unzip -q EnayaAssistant_MobileBuild.zip -d extracted
+          test -f extracted/EnayaAssistant/settings.gradle.kts
+          test -f extracted/EnayaAssistant/app/build.gradle.kts
+
+      - name: Accept Android SDK licenses
+        shell: bash
+        run: |
+          if command -v sdkmanager >/dev/null 2>&1; then
+            yes | sdkmanager --licenses >/dev/null || true
+            sdkmanager 'platforms;android-35' 'build-tools;35.0.0' >/dev/null
+          fi
+
+      - name: Build installable debug APK
+        working-directory: extracted/EnayaAssistant
+        shell: bash
+        run: gradle --no-daemon --stacktrace assembleDebug
+
+      - name: Verify APK
+        shell: bash
+        run: test -s extracted/EnayaAssistant/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload Enaya APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Enaya-Assistant-APK
+          path: extracted/EnayaAssistant/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+          
